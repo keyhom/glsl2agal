@@ -299,7 +299,7 @@ ir_constant_printing_visitor::visit(ir_variable *ir)
 		n > 3 ? ir->constant_value->get_float_component(3) : 0.0f);
 		numConsts++;
    } else {
-   	ralloc_asprintf_append (&shader->optimizedOutput, "%c\"%s\": UNHANDLED_CONST_TYPE\n", emitComma ? ',' : ' ', ir->name);
+   	ralloc_asprintf_append (&shader->optimizedOutput, "%c\"%s\": \"UNHANDLED_CONST_TYPE\"\n", emitComma ? ',' : ' ', ir->name);
    }
    emitComma = true;
 

@@ -1,5 +1,6 @@
-java -jar $SDK/usr/lib/asc2.jar -merge -md -d -abcfuture -AS3 \
-   -out agaloptimiser -outdir . -import $SDK/usr/lib/builtin.abc -import $SDK/usr/lib/playerglobal.abc \
+asc2 -merge -md -d -abcfuture -AS3 \
+   -out agaloptimiser -outdir . -import builtin.abc -import playerglobal.abc \
+   -import C_Run.abc -import CModule.abc -import BinaryData.abc \
    com/adobe/AGALOptimiser/nsinternal.as \
    com/adobe/AGALOptimiser/nsdebug.as \
    com/adobe/AGALOptimiser/agal/BasicBlock.as \

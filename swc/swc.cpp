@@ -165,7 +165,7 @@ main(int argc, char **argv)
    AS3_GoAsync();
 }
 
-extern "C" void compileShader()  __attribute__((used, annotate("as3sig:public function compileShader(src:String, mode:int, optimize:Boolean, gles:Boolean = false):String")));
+extern "C" void compileShader()  __attribute__((used, annotate("as3sig:public function compileShader(src:String, mode:int, optimize:Boolean, gles:Boolean = false, preprocessor:Boolean = false):String")));
 
 extern "C" void compileShader()
 {
@@ -176,6 +176,8 @@ extern "C" void compileShader()
    bool gles = false;
    AS3_CopyScalarToVar(gles, gles);
 
+   bool preprocessor = false;
+   AS3_CopyScalarToVar(preprocessor, preprocessor);
 
    glslopt_ctx* gContext = glslopt_initialize(gles);
 
@@ -183,7 +185,7 @@ extern "C" void compileShader()
    AS3_GetScalarFromVar(mode, mode);
    const glslopt_shader_type type = mode == 0 ? kGlslOptShaderVertex : kGlslOptShaderFragment;
 
-   glslopt_shader* shader = glslopt_optimize(gContext, type, src, 0);
+   glslopt_shader* shader = glslopt_optimize(gContext, type, src, preprocessor);
 
    const char* optimizedShader = glslopt_get_output(shader);
    AS3_DeclareVar(outputstr, String);
