@@ -24,7 +24,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "ir_optimization.h"
 #include "glsl_types.h"
 #include "program/hash_table.h"
-#include "builtin_variables.h"
+// #include "builtin_variables.h"
 #include "replaceInstruction.h"
 #include "ir_print_agal_visitor.h"
 
@@ -76,7 +76,7 @@ ir_lower_conditional_assigns_to_agal_visitor::visit_leave(ir_assignment *ir)
    char nm[128];
    sprintf(&nm[0], "cond_assign_tmp_result_%d", tmpcount++);
    ir_variable *tmpval = new(ctx) ir_variable(var->type, ralloc_strdup(ctx, &nm[0]), ir_var_auto, glsl_precision_undefined);
-   
+
    // switch the assignment so it outputs to the temp var
    if(swiz) {
       ir_swizzle *newswiz = swiz->clone(ctx, NULL);
@@ -95,7 +95,7 @@ ir_lower_conditional_assigns_to_agal_visitor::visit_leave(ir_assignment *ir)
    base_ir->insert_before(condassign);
 
    char tmpvalswiz[] = "xyzw";
-   tmpvalswiz[tmpval->component_slots()] = 0;
+   tmpvalswiz[tmpval->type->component_slots()] = 0;
 
    if(previouslywritten)
    {

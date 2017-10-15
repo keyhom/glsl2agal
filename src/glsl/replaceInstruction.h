@@ -18,6 +18,7 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
+#include <ir.h>
 
 static ir_variable* digOutVar(ir_instruction *ir) {
    if(ir->as_swizzle()) {
@@ -75,8 +76,8 @@ static bool replaceInstruction(ir_instruction *in, ir_rvalue *oldi, ir_rvalue *n
    } else if(in->as_call()) {
       ir_call *c = in->as_call();
 
-      foreach_iter(exec_list_iterator, iter, *c) {
-         ir_rvalue *param_rval = (ir_rvalue *)iter.get();
+      for (exec_node *iter = c->next; iter != NULL; iter = iter->next) {
+         ir_rvalue *param_rval = (ir_rvalue *)iter;
          if(param_rval == oldi) {
             param_rval->replace_with(newi);
             flag = true;

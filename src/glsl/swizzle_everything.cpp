@@ -61,7 +61,7 @@ void ir_swizzle_everything_visitor::handle_rvalue(ir_rvalue **rvalue)
       return;
 
    ir_variable *var = ir->as_dereference_variable()->variable_referenced();
-   int n =  var->component_slots();
+   int n =  var->type->component_slots();
 
    if(n == 0 || n > 4) {
       //fprintf(stderr, "CANT SWIZZLE ARRAY %s %d\n", var->name, n);

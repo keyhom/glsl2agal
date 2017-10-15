@@ -24,7 +24,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "ir_optimization.h"
 #include "glsl_types.h"
 #include "program/hash_table.h"
-#include "builtin_variables.h"
 #include "replaceInstruction.h"
 #include "ir_print_agal_visitor.h"
 #include <list>
@@ -86,10 +85,10 @@ ir_remap_agalvars_visitor::visit(ir_variable *ir)
    if(strcmp(ir->name, "gl_FragData") == 0 || strcmp(ir->name, "gl_FragColor") == 0 || strcmp(ir->name, "gl_Position") == 0) {
       // ignore
    } else if(this->mode == kPrintGlslVertex) {
-      if(ir->mode == ir_var_out)
+      if(ir->data.mode == ir_var_shader_out)
          varyingNames.push_back(ir->name);
    } else if(this->mode == kPrintGlslFragment) {
-      if(ir->mode == ir_var_in)
+      if(ir->data.mode == ir_var_shader_in)
          varyingNames.push_back(ir->name);
    }
 
@@ -118,8 +117,8 @@ void ir_remap_agalvars_visitor::computeAgalName(ir_variable *ir)
    }
 
    // parent must be allocated before any synthetic children
-   if(ir->parent)
-      computeAgalName(ir->parent);
+   if(ir->data.parent)
+      computeAgalName(ir->data.parent);
 
    agalName[0] = 0;
 
@@ -128,55 +127,55 @@ void ir_remap_agalvars_visitor::computeAgalName(ir_variable *ir)
       strcpy(&agalName[1], ir->name);
       return;
    }
-   int slots = ((3+ir->component_slots()) & ~0x3) / 4;
+   int slots = ((3+ir->type->component_slots()) & ~0x3) / 4;
 
    if(ir->type->base_type == GLSL_TYPE_SAMPLER)
       slots = 1;
 
    if(slots == 0) {
-      int minsz = ir->max_array_access;
+      int minsz = ir->data.max_array_access;
       //fprintf(stderr, "zero sized var: %s (needs at least %d)\n", ir->name, minsz);
       slots = minsz > 0 ? minsz : 1;
    }
 
-   if(ir->parent) {
+   if(ir->data.parent) {
       // must be a synthetic child of an array
-      ir->location = ir->parent->location + (ir->location * slots);
+      ir->data.location = ir->data.parent->data.location + (ir->data.location * slots);
 
       //fprintf(stderr, "remapping %s to %d\n", ir->name, ir->location);
    } else {
-      switch(ir->mode) {
+      switch(ir->data.mode) {
          case ir_var_auto:
          case ir_var_temporary:
-            ir->location = this->nT;
+            ir->data.location = this->nT;
             this->nT += slots;
             break;
-         case ir_var_in:
+         case ir_var_shader_in:
             if(this->mode == kPrintGlslVertex) {
-               ir->location = this->nVA;
+               ir->data.location = this->nVA;
                this->nVA += slots;
             } else {
-               ir->location = computeStableAgalVaryingName(ir);
+               ir->data.location = computeStableAgalVaryingName(ir);
             }
             break;
-         case ir_var_out:
-            ir->location = computeStableAgalVaryingName(ir);
+         case ir_var_shader_out:
+            ir->data.location = computeStableAgalVaryingName(ir);
             break;
          case ir_var_uniform :
             if(this->mode == kPrintGlslVertex) {
-               ir->location = this->nC;
+               ir->data.location = this->nC;
                this->nC += slots;
             } else {
                if(ir->type->base_type == GLSL_TYPE_SAMPLER) {
-                  ir->location = this->nFS;
+                  ir->data.location = this->nFS;
                   this->nFS += slots;
                } else {
-                  ir->location = this->nC;
+                  ir->data.location = this->nC;
                   this->nC += slots;
                }
             }
             break;
-         default: fprintf(stderr, "unknown mode %d\n", ir->mode); abort();
+         default: fprintf(stderr, "unknown mode %d\n", ir->data.mode); abort();
       }
    }
 
@@ -185,29 +184,29 @@ void ir_remap_agalvars_visitor::computeAgalName(ir_variable *ir)
    } else if(strcmp(ir->name, "gl_Position") == 0) {
       sprintf(&agalName[0], useNewSyntax ? "vo0" : "op");
    } else if(this->mode == kPrintGlslVertex) {
-      switch(ir->mode) {
+      switch(ir->data.mode) {
          case ir_var_auto:
-         case ir_var_temporary: sprintf(&agalName[0], "vt%d", ir->location); break;
-         case ir_var_in      :  sprintf(&agalName[0], "va%d", ir->location); break;
-         case ir_var_out     :  sprintf(&agalName[0], useNewSyntax ? "vi%d" : "v%d", ir->location); break;
-         case ir_var_uniform :  sprintf(&agalName[0], "vc%d", ir->location); break;
-         default: fprintf(stderr, "unknown v mode %d\n", ir->mode); abort();
+         case ir_var_temporary: sprintf(&agalName[0], "vt%d", ir->data.location); break;
+         case ir_var_shader_in      :  sprintf(&agalName[0], "va%d", ir->data.location); break;
+         case ir_var_shader_out     :  sprintf(&agalName[0], useNewSyntax ? "vi%d" : "v%d", ir->data.location); break;
+         case ir_var_uniform :  sprintf(&agalName[0], "vc%d", ir->data.location); break;
+         default: fprintf(stderr, "unknown v mode %d\n", ir->data.mode); abort();
       }
    } else if(this->mode == kPrintGlslFragment) {
-      switch(ir->mode) {
+      switch(ir->data.mode) {
          case ir_var_auto:
-         case ir_var_temporary: sprintf(&agalName[0], "ft%d", ir->location); break;
-         case ir_var_in      :  sprintf(&agalName[0], useNewSyntax ? "vi%d" : "v%d", ir->location); break;
-         case ir_var_out     :  sprintf(&agalName[0], useNewSyntax ? "fo%d" : "oc", ir->location); break;
+         case ir_var_temporary: sprintf(&agalName[0], "ft%d", ir->data.location); break;
+         case ir_var_shader_in      :  sprintf(&agalName[0], useNewSyntax ? "vi%d" : "v%d", ir->data.location); break;
+         case ir_var_shader_out     :  sprintf(&agalName[0], useNewSyntax ? "fo%d" : "oc", ir->data.location); break;
          case ir_var_uniform:
             if(ir->type->base_type == GLSL_TYPE_SAMPLER) {
-               sprintf(&agalName[0], "fs%d", ir->location);
+               sprintf(&agalName[0], "fs%d", ir->data.location);
             } else {
-               sprintf(&agalName[0], "fc%d", ir->location);
+               sprintf(&agalName[0], "fc%d", ir->data.location);
             }
 
             break;
-         default: fprintf(stderr, "unknown f mode %d\n", ir->mode);;
+         default: fprintf(stderr, "unknown f mode %d\n", ir->data.mode);;
       }
    }
 
@@ -224,7 +223,7 @@ void ir_remap_agalvars_visitor::handleDeref(ir_variable **varloc)
       //fprintf(stderr, "remapping deref -- %s\n", glvar->name);
    } else if(glvar->name[0] == 'g' && glvar->name[1] == 'l' && glvar->name[2] == '_') {
       computeAgalName(glvar);
-      agalvar = new (glvar) ir_variable(glvar->type, ralloc_strdup(glvar, &agalName[0]), (ir_variable_mode)glvar->mode, (glsl_precision)glvar->precision);
+      agalvar = new (glvar) ir_variable(glvar->type, ralloc_strdup(glvar, &agalName[0]), (ir_variable_mode)glvar->data.mode, (glsl_precision)glvar->data.precision);
       hash_table_insert(varhash, agalvar, ralloc_strdup(agalvar, glvar->name));
       hash_table_insert(varhash, agalvar, ralloc_strdup(agalvar, &agalName[0]));
       hash_table_insert(renamedvars, glvar, glvar);

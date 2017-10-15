@@ -49,6 +49,8 @@
 
 static bool debug = false;
 
+namespace {
+
 class acp_entry : public exec_node
 {
 public:
@@ -93,6 +95,7 @@ public:
    ir_copy_propagation_elements_visitor()
    {
       this->progress = false;
+      this->killed_all = false;
       this->mem_ctx = ralloc_context(NULL);
       this->shader_mem_ctx = NULL;
       this->acp = new(mem_ctx) exec_list;
@@ -108,6 +111,7 @@ public:
    virtual ir_visitor_status visit_leave(class ir_assignment *);
    virtual ir_visitor_status visit_enter(class ir_call *);
    virtual ir_visitor_status visit_enter(class ir_if *);
+   virtual ir_visitor_status visit_leave(class ir_swizzle *);
 
    void handle_rvalue(ir_rvalue **rvalue);
 
@@ -132,6 +136,8 @@ public:
    /* Context for allocating new shader nodes. */
    void *shader_mem_ctx;
 };
+
+} /* unnamed namespace */
 
 ir_visitor_status
 ir_copy_propagation_elements_visitor::visit_enter(ir_function_signature *ir)
@@ -179,6 +185,15 @@ ir_copy_propagation_elements_visitor::visit_leave(ir_assignment *ir)
    return visit_continue;
 }
 
+ir_visitor_status
+ir_copy_propagation_elements_visitor::visit_leave(ir_swizzle *)
+{
+   /* Don't visit the values of swizzles since they are handled while
+    * visiting the swizzle itself.
+    */
+   return visit_continue;
+}
+
 /**
  * Replaces dereferences of ACP RHS variables with ACP LHS variables.
  *
@@ -192,8 +207,9 @@ ir_copy_propagation_elements_visitor::handle_rvalue(ir_rvalue **ir)
    int swizzle_chan[4];
    ir_dereference_variable *deref_var;
    ir_variable *source[4] = {NULL, NULL, NULL, NULL};
-   int source_chan[4];
+   int source_chan[4] = {0, 0, 0, 0};
    int chans;
+   bool noop_swizzle = true;
 
    if (!*ir)
       return;
@@ -229,14 +245,15 @@ ir_copy_propagation_elements_visitor::handle_rvalue(ir_rvalue **ir)
    /* Try to find ACP entries covering swizzle_chan[], hoping they're
     * the same source variable.
     */
-   foreach_iter(exec_list_iterator, iter, *this->acp) {
-      acp_entry *entry = (acp_entry *)iter.get();
-
+   foreach_in_list(acp_entry, entry, this->acp) {
       if (var == entry->lhs) {
 	 for (int c = 0; c < chans; c++) {
 	    if (entry->write_mask & (1 << swizzle_chan[c])) {
 	       source[c] = entry->rhs;
 	       source_chan[c] = entry->swizzle[swizzle_chan[c]];
+
+               if (source_chan[c] != swizzle_chan[c])
+                  noop_swizzle = false;
 	    }
 	 }
       }
@@ -253,6 +270,12 @@ ir_copy_propagation_elements_visitor::handle_rvalue(ir_rvalue **ir)
    if (!shader_mem_ctx)
       shader_mem_ctx = ralloc_parent(deref_var);
 
+   /* Don't pointlessly replace the rvalue with itself (or a noop swizzle
+    * of itself, which would just be deleted by opt_noop_swizzle).
+    */
+   if (source[0] == var && noop_swizzle)
+      return;
+
    if (debug) {
       printf("Copy propagation from:\n");
       (*ir)->print();
@@ -265,6 +288,7 @@ ir_copy_propagation_elements_visitor::handle_rvalue(ir_rvalue **ir)
 					source_chan[2],
 					source_chan[3],
 					chans);
+   progress = true;
 
    if (debug) {
       printf("to:\n");
@@ -278,21 +302,21 @@ ir_visitor_status
 ir_copy_propagation_elements_visitor::visit_enter(ir_call *ir)
 {
    /* Do copy propagation on call parameters, but skip any out params */
-   exec_list_iterator sig_param_iter = ir->get_callee()->parameters.iterator();
-   foreach_iter(exec_list_iterator, iter, ir->actual_parameters) {
-      ir_variable *sig_param = (ir_variable *)sig_param_iter.get();
-      ir_instruction *ir = (ir_instruction *)iter.get();
-      if (sig_param->mode != ir_var_out && sig_param->mode != ir_var_inout) {
+   foreach_two_lists(formal_node, &ir->callee->parameters,
+                     actual_node, &ir->actual_parameters) {
+      ir_variable *sig_param = (ir_variable *) formal_node;
+      ir_rvalue *ir = (ir_rvalue *) actual_node;
+      if (sig_param->data.mode != ir_var_function_out
+          && sig_param->data.mode != ir_var_function_inout) {
          ir->accept(this);
       }
-      sig_param_iter.next();
    }
 
    /* Since we're unlinked, we don't (necessarily) know the side effects of
     * this call.  So kill all copies. Except if it's a built-in; we know
 	* they are side effect free.
     */
-   if (!ir->get_callee()->is_builtin) {
+   if (!ir->callee->is_builtin()) {
       acp->make_empty();
       this->killed_all = true;
    }
@@ -312,8 +336,7 @@ ir_copy_propagation_elements_visitor::handle_if_block(exec_list *instructions)
    this->killed_all = false;
 
    /* Populate the initial acp with a copy of the original */
-   foreach_iter(exec_list_iterator, iter, *orig_acp) {
-      acp_entry *a = (acp_entry *)iter.get();
+   foreach_in_list(acp_entry, a, orig_acp) {
       this->acp->push_tail(new(this->mem_ctx) acp_entry(a));
    }
 
@@ -331,8 +354,7 @@ ir_copy_propagation_elements_visitor::handle_if_block(exec_list *instructions)
    /* Move the new kills into the parent block's list, removing them
     * from the parent's ACP list in the process.
     */
-   foreach_list_safe(node, new_kills) {
-      kill_entry *k = (kill_entry *)node;
+   foreach_in_list_safe(kill_entry, k, new_kills) {
       kill(k);
    }
 }
@@ -375,8 +397,7 @@ ir_copy_propagation_elements_visitor::visit_enter(ir_loop *ir)
    this->acp = orig_acp;
    this->killed_all = this->killed_all || orig_killed_all;
 
-   foreach_list_safe(node, new_kills) {
-      kill_entry *k = (kill_entry *)node;
+   foreach_in_list_safe(kill_entry, k, new_kills) {
       kill(k);
    }
 
@@ -388,9 +409,7 @@ ir_copy_propagation_elements_visitor::visit_enter(ir_loop *ir)
 void
 ir_copy_propagation_elements_visitor::kill(kill_entry *k)
 {
-   foreach_list_safe(node, acp) {
-      acp_entry *entry = (acp_entry *)node;
-
+   foreach_in_list_safe(acp_entry, entry, acp) {
       if (entry->lhs == k->var) {
 	 entry->write_mask = entry->write_mask & ~k->write_mask;
 	 if (entry->write_mask == 0) {
@@ -454,10 +473,23 @@ ir_copy_propagation_elements_visitor::add_copy(ir_assignment *ir)
 	 swizzle[i] = orig_swizzle[j++];
    }
 	
-   if (lhs->var->precision != rhs->var->precision && lhs->var->precision!=glsl_precision_undefined && rhs->var->precision!=glsl_precision_undefined)
+   if (lhs->var->data.precision != rhs->var->data.precision && lhs->var->data.precision!=glsl_precision_undefined && rhs->var->data.precision!=glsl_precision_undefined)
       return;
 
-   entry = new(this->mem_ctx) acp_entry(lhs->var, rhs->var, ir->write_mask,
+   int write_mask = ir->write_mask;
+   if (lhs->var == rhs->var) {
+      /* If this is a copy from the variable to itself, then we need
+       * to be sure not to include the updated channels from this
+       * instruction in the set of new source channels to be
+       * copy-propagated from.
+       */
+      for (int i = 0; i < 4; i++) {
+	 if (ir->write_mask & (1 << orig_swizzle[i]))
+	    write_mask &= ~(1 << i);
+      }
+   }
+
+   entry = new(this->mem_ctx) acp_entry(lhs->var, rhs->var, write_mask,
 					swizzle);
    this->acp->push_tail(entry);
 }

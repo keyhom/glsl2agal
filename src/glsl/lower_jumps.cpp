@@ -133,6 +133,8 @@ enum jump_strength
    strength_return
 };
 
+namespace {
+
 struct block_record
 {
    /* minimum jump strength (of lowered IR, not pre-lowering IR)
@@ -279,8 +281,13 @@ struct ir_lower_jumps_visitor : public ir_control_flow_visitor {
    bool lower_main_return;
 
    ir_lower_jumps_visitor()
+      : progress(false),
+        pull_out_jumps(false),
+        lower_continue(false),
+        lower_break(false),
+        lower_sub_return(false),
+        lower_main_return(false)
    {
-      this->progress = false;
    }
 
    void truncate_after_instruction(exec_node *ir)
@@ -438,6 +445,17 @@ struct ir_lower_jumps_visitor : public ir_control_flow_visitor {
        * satisfied, because discard statements can't contain other
        * statements.
        */
+      (void) ir;
+   }
+	
+   virtual void visit(class ir_precision_statement * ir)
+   {
+      /* Nothing needs to be done. */
+   }
+
+   virtual void visit(class ir_typedecl_statement * ir)
+   {
+      /* Nothing needs to be done. */
    }
 
    enum jump_strength get_jump_strength(ir_instruction* ir)
@@ -492,16 +510,16 @@ struct ir_lower_jumps_visitor : public ir_control_flow_visitor {
       /* Note: since visiting a node may change that node's next
        * pointer, we can't use visit_exec_list(), because
        * visit_exec_list() caches the node's next pointer before
-       * visiting it.  So we use foreach_list() instead.
+       * visiting it.  So we use foreach_in_list() instead.
        *
-       * foreach_list() isn't safe if the node being visited gets
+       * foreach_in_list() isn't safe if the node being visited gets
        * removed, but fortunately this visitor doesn't do that.
        */
 
       block_record saved_block = this->block;
       this->block = block_record();
-      foreach_list(node, list) {
-         ((ir_instruction *) node)->accept(this);
+      foreach_in_list(ir_instruction, node, list) {
+         node->accept(this);
       }
       block_record ret = this->block;
       this->block = saved_block;
@@ -991,6 +1009,8 @@ lower_continue:
    }
 };
 
+} /* anonymous namespace */
+
 bool
 do_lower_jumps(exec_list *instructions, bool pull_out_jumps, bool lower_sub_return, bool lower_main_return, bool lower_continue, bool lower_break)
 {
@@ -1001,10 +1021,12 @@ do_lower_jumps(exec_list *instructions, bool pull_out_jumps, bool lower_sub_retu
    v.lower_sub_return = lower_sub_return;
    v.lower_main_return = lower_main_return;
 
+   bool progress_ever = false;
    do {
       v.progress = false;
       visit_exec_list(instructions, &v);
+      progress_ever = v.progress || progress_ever;
    } while (v.progress);
 
-   return v.progress;
+   return progress_ever;
 }

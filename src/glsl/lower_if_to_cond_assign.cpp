@@ -48,7 +48,8 @@
 #include "glsl_types.h"
 #include "ir.h"
 #include "program/hash_table.h"
-#include "replaceInstruction.h"
+
+namespace {
 
 class ir_if_to_cond_assign_visitor : public ir_hierarchical_visitor {
 public:
@@ -77,9 +78,14 @@ public:
    struct hash_table *condition_variables;
 };
 
+} /* anonymous namespace */
+
 bool
 lower_if_to_cond_assign(exec_list *instructions, unsigned max_depth)
 {
+   if (max_depth == UINT_MAX)
+      return false;
+
    ir_if_to_cond_assign_visitor v(max_depth);
 
    visit_list_elements(&v, instructions);
@@ -90,13 +96,9 @@ lower_if_to_cond_assign(exec_list *instructions, unsigned max_depth)
 void
 check_control_flow(ir_instruction *ir, void *data)
 {
-   ir_call *call;
    bool *found_control_flow = (bool *)data;
    switch (ir->ir_type) {
    case ir_type_call:
-      call = ir->as_call();
-      *found_control_flow = ! call->get_callee()->is_builtin;
-      break;
    case ir_type_discard:
    case ir_type_loop:
    case ir_type_loop_jump:
@@ -114,18 +116,8 @@ move_block_to_cond_assign(void *mem_ctx,
 			  exec_list *instructions,
 			  struct hash_table *ht)
 {
-   hash_table *localvars = hash_table_ctor(0, hash_table_pointer_hash, hash_table_pointer_compare);
-
-   foreach_list_safe(node, instructions) {
-      ir_instruction *ir = (ir_instruction *) node;
-
-      if (ir->ir_type == ir_type_variable) {
-         // found a local var, assignments to this
-         // should not be conditionalised
-         hash_table_insert(localvars, (void*)0x1, ir);
-         //fprintf(stderr, "local var: %p %s\n", ir, ir->as_variable()->name);
-
-      } else if (ir->ir_type == ir_type_assignment) {
+   foreach_in_list_safe(ir_instruction, ir, instructions) {
+      if (ir->ir_type == ir_type_assignment) {
 	 ir_assignment *assign = (ir_assignment *)ir;
 
 	 if (hash_table_find(ht, assign) == NULL) {
@@ -138,12 +130,8 @@ move_block_to_cond_assign(void *mem_ctx,
 	    const bool assign_to_cv =
 	       hash_table_find(ht, assign->lhs->variable_referenced()) != NULL;
 
-          //fprintf(stderr, "assign var: %p %s\n", digOutVar(assign->lhs), digOutVar(assign->lhs)->name);
-      if(hash_table_find(localvars, digOutVar(assign->lhs))) {
-            // local var assignments don't need to be conditionalised
-            //fprintf(stderr, "local var: %s gets no conditional\n", digOutVar(assign->lhs)->name);
-      } else if (!assign->condition) {
-         if (assign_to_cv) {
+	    if (!assign->condition) {
+	       if (assign_to_cv) {
 		  assign->rhs =
 		     new(mem_ctx) ir_expression(ir_binop_logic_and,
 						glsl_type::bool_type,
@@ -166,8 +154,6 @@ move_block_to_cond_assign(void *mem_ctx,
       ir->remove();
       if_ir->insert_before(ir);
    }
-
-   hash_table_dtor(localvars);
 }
 
 ir_visitor_status
@@ -190,12 +176,10 @@ ir_if_to_cond_assign_visitor::visit_leave(ir_if *ir)
    ir_assignment *assign;
 
    /* Check that both blocks don't contain anything we can't support. */
-   foreach_iter(exec_list_iterator, then_iter, ir->then_instructions) {
-      ir_instruction *then_ir = (ir_instruction *)then_iter.get();
+   foreach_in_list(ir_instruction, then_ir, &ir->then_instructions) {
       visit_tree(then_ir, check_control_flow, &found_control_flow);
    }
-   foreach_iter(exec_list_iterator, else_iter, ir->else_instructions) {
-      ir_instruction *else_ir = (ir_instruction *)else_iter.get();
+   foreach_in_list(ir_instruction, else_ir, &ir->else_instructions) {
       visit_tree(else_ir, check_control_flow, &found_control_flow);
    }
    if (found_control_flow)

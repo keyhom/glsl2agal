@@ -48,7 +48,7 @@ struct ga_entry : public exec_node
 	{
 		assert(ass);
 		this->ass = ass;
-	}	
+	}
 	ir_assignment* ass;
 };
 
@@ -59,7 +59,7 @@ struct global_agal_tracker {
 		main_function_done = false;
 		fullywritten = hash_table_ctor(0, hash_table_pointer_hash, hash_table_pointer_compare);
 	}
-	
+
 	~global_agal_tracker() {
 		ralloc_free(mem_ctx);
 	}
@@ -78,7 +78,7 @@ public:
 		globals = globals_;
 		mode = mode_;
 		state = _state;
-		use_precision = false;		
+		use_precision = false;
 	}
 
 	virtual ~ir_print_agal_visitor()
@@ -106,6 +106,10 @@ public:
 	virtual void visit(ir_if *);
 	virtual void visit(ir_loop *);
 	virtual void visit(ir_loop_jump *);
+    virtual void visit(ir_precision_statement *);
+    virtual void visit(ir_typedecl_statement *);
+    virtual void visit(ir_emit_vertex *);
+    virtual void visit(ir_end_primitive *);
 
 	int indentation;
 	char* buffer;
@@ -113,7 +117,7 @@ public:
 	PrintGlslMode mode;
 	bool	use_precision;
 	_mesa_glsl_parse_state *state;
-	
+
 };
 
 static int writeMask = 0, readComponents= 0, writeComponents = 0;
@@ -132,55 +136,56 @@ _mesa_print_ir_agal(exec_list *instructions,
 		if (state->OES_standard_derivatives_enable)
 			ralloc_strcat (&buffer, "#extension GL_OES_standard_derivatives : enable\n");
 	}
-   if (state) {
-	   ir_struct_usage_visitor v;
-	   v.run (instructions);
 
-      for (unsigned i = 0; i < state->num_user_structures; i++) {
-	 const glsl_type *const s = state->user_structures[i];
+    if (state) {
+        // ir_struct_usage_visitor v;
+        // v.run (instructions);
 
-	 if (!v.has_struct_entry(s))
-		 continue;
+        for (unsigned i = 0; i < state->num_user_structures; i++) {
+            const glsl_type *const s = state->user_structures[i];
 
-	 ralloc_asprintf_append (&buffer, "struct %s {\n",
-		s->name);
+            // if (!v.has_struct_entry(s))
+               // continue;
 
-	 for (unsigned j = 0; j < s->length; j++) {
-	    ralloc_asprintf_append (&buffer, "  ");
-		if (state->es_shader)
-			ralloc_asprintf_append (&buffer, "%s", get_precision_string(s->fields.structure[j].precision));
-	    buffer = print_type(buffer, s->fields.structure[j].type, false);
-	    ralloc_asprintf_append (&buffer, " %s", s->fields.structure[j].name);
-        buffer = print_type_post(buffer, s->fields.structure[j].type, false);
-        ralloc_asprintf_append (&buffer, "\n");
-	 }
+            ralloc_asprintf_append (&buffer, "struct %s {\n",
+              s->name);
 
-	 ralloc_asprintf_append (&buffer, "};\n");
-      }
-   }
-	
+            for (unsigned j = 0; j < s->length; j++) {
+               ralloc_asprintf_append (&buffer, "  ");
+              if (state->es_shader)
+              	ralloc_asprintf_append (&buffer, "%s", get_precision_string(s->fields.structure[j].precision));
+               buffer = print_type(buffer, s->fields.structure[j].type, false);
+               ralloc_asprintf_append (&buffer, " %s", s->fields.structure[j].name);
+               buffer = print_type_post(buffer, s->fields.structure[j].type, false);
+               ralloc_asprintf_append (&buffer, "\n");
+            }
+
+            ralloc_asprintf_append (&buffer, "};\n");
+        }
+    }
+
 	global_agal_tracker gtracker;
 
 	int len=0;
 
-   foreach_iter(exec_list_iterator, iter, *instructions) {
-      ir_instruction *ir = (ir_instruction *)iter.get();
-	  if (ir->ir_type == ir_type_variable) {
-		ir_variable *var = static_cast<ir_variable*>(ir);
-		if (strstr(var->name, "gl_") == var->name)
-			continue;
-	  }
+    foreach_in_list(exec_node, iter, instructions) {
+        ir_instruction *ir = (ir_instruction *)iter;
+        if (ir->ir_type == ir_type_variable) {
+         ir_variable *var = static_cast<ir_variable*>(ir);
+         if (strstr(var->name, "gl_") == var->name)
+         	continue;
+        }
 
-	  ir_print_agal_visitor v (buffer, &gtracker, mode, state);
-	  len = strlen(buffer);
-	  ir->accept(&v);
-		if(state->error)
-	  	return NULL;
+        ir_print_agal_visitor v (buffer, &gtracker, mode, state);
+        len = strlen(buffer);
+        ir->accept(&v);
+         if(state->error)
+        	return NULL;
 
-	  buffer = v.buffer;
-      if (ir->ir_type != ir_type_function && len != strlen(buffer))
-		ralloc_asprintf_append (&buffer, "\n");
-   }
+        buffer = v.buffer;
+        if (ir->ir_type != ir_type_function && len != strlen(buffer))
+     	ralloc_asprintf_append (&buffer, "\n");
+    }
 
    return buffer;
 }
@@ -201,7 +206,8 @@ void ir_print_agal_visitor::print_precision (ir_instruction* ir)
 {
 	if (!this->use_precision)
 		return;
-	if (ir->type && !ir->type->is_float() && (!ir->type->is_array() || !ir->type->element_type()->is_float()))
+    const ir_rvalue *rv = ir->as_rvalue();
+	if (rv && rv->type && !rv->type->is_float() && (!rv->type->is_array() || !rv->type->element_type()->is_float()))
 		return;
 	glsl_precision prec = precision_from_ir(ir);
 	if (prec == glsl_precision_high || prec == glsl_precision_undefined)
@@ -252,13 +258,11 @@ void ir_print_agal_visitor::visit(ir_function_signature *ir)
 	if(strcmp(ir->function_name(), "main") != 0)
 		return;
 
-   foreach_iter(exec_list_iterator, iter, ir->body) {
-      ir_instruction *const inst = (ir_instruction *) iter.get();
-
-      indent();
-      inst->accept(this);
-	  ralloc_asprintf_append (&buffer, "\n");
-   }
+    foreach_in_list(ir_instruction, inst, &ir->body) {
+        indent();
+        inst->accept(this);
+	    ralloc_asprintf_append (&buffer, "\n");
+    }
 }
 
 
@@ -267,25 +271,30 @@ void ir_print_agal_visitor::visit(ir_function *ir)
 	if(strcmp(ir->name, "main") != 0)
 		return;
 
-   bool found_non_builtin_proto = false;
+    bool found_non_builtin_proto = false;
 
-   foreach_iter(exec_list_iterator, iter, *ir) {
-      ir_function_signature *const sig = (ir_function_signature *) iter.get();
-      if (sig->is_defined || !sig->is_builtin)
-	 found_non_builtin_proto = true;
-   }
-   if (!found_non_builtin_proto)
-      return;
+    foreach_in_list(ir_function_signature, sig, &ir->signatures) {
+        if (sig->is_defined || !sig->is_builtin())
+	        found_non_builtin_proto = true;
+    }
 
-   foreach_iter(exec_list_iterator, iter, *ir) {
-      ir_function_signature *const sig = (ir_function_signature *) iter.get();
+    if (!found_non_builtin_proto)
+        return;
 
-      indent();
-      sig->accept(this);
-      ralloc_asprintf_append (&buffer, "\n");
-   }
+    foreach_in_list(ir_function_signature, sig, &ir->signatures) {
+        indent();
+        sig->accept(this);
+        ralloc_asprintf_append (&buffer, "\n");
+    }
+   // foreach_iter(exec_list_iterator, iter, *ir) {
+      // ir_function_signature *const sig = (ir_function_signature *) iter.get();
 
-   indent();
+      // indent();
+      // sig->accept(this);
+      // ralloc_asprintf_append (&buffer, "\n");
+   // }
+
+    indent();
 }
 
 
@@ -408,52 +417,59 @@ void ir_print_agal_visitor::visit(ir_expression *ir)
 
 void ir_print_agal_visitor::visit(ir_texture *ir)
 {
-   ralloc_asprintf_append (&buffer, "(%s ", ir->opcode_string());
+    ralloc_asprintf_append (&buffer, "(%s ", ir->opcode_string());
 
-   ir->sampler->accept(this);
-   ralloc_asprintf_append (&buffer, " ");
+    ir->sampler->accept(this);
+    ralloc_asprintf_append (&buffer, " ");
 
-   ir->coordinate->accept(this);
-	
-   if (ir->offset != NULL) {
-      ir->offset->accept(this);
-   }
-	
-   if (ir->op != ir_txf) {
-      if (ir->projector)
-	 ir->projector->accept(this);
-      else
-	 ralloc_asprintf_append (&buffer, "1");
+    if (ir->op != ir_txs && ir->op != ir_query_levels)
+        ir->coordinate->accept(this);
 
-      if (ir->shadow_comparitor) {
-	 ralloc_asprintf_append (&buffer, " ");
-	 ir->shadow_comparitor->accept(this);
-      } else {
-	 ralloc_asprintf_append (&buffer, " ()");
-      }
-   }
+    if (ir->offset != NULL) {
+        ir->offset->accept(this);
+    }
 
-   ralloc_asprintf_append (&buffer, " ");
-   switch (ir->op)
-   {
-   case ir_tex:
-      break;
-   case ir_txb:
-      ir->lod_info.bias->accept(this);
-      break;
-   case ir_txl:
-   case ir_txf:
-      ir->lod_info.lod->accept(this);
-      break;
-   case ir_txd:
-      ralloc_asprintf_append (&buffer, "(");
-      ir->lod_info.grad.dPdx->accept(this);
-      ralloc_asprintf_append (&buffer, " ");
-      ir->lod_info.grad.dPdy->accept(this);
-      ralloc_asprintf_append (&buffer, ")");
-      break;
-   };
-   ralloc_asprintf_append (&buffer, ")");
+    // if (ir->op != ir_txf) {
+        // if (ir->projector)
+            // ir->projector->accept(this);
+        // else
+            // ralloc_asprintf_append (&buffer, "1");
+
+        // if (ir->shadow_comparitor) {
+            // ralloc_asprintf_append (&buffer, " ");
+            // ir->shadow_comparitor->accept(this);
+        // } else {
+            // ralloc_asprintf_append (&buffer, " ()");
+        // }
+    // }
+
+    ralloc_asprintf_append (&buffer, " ");
+    switch (ir->op)
+    {
+    case ir_tex:
+        break;
+    case ir_txb:
+        ir->lod_info.bias->accept(this);
+        break;
+    case ir_txl:
+    case ir_txf:
+    case ir_txs:
+        ir->lod_info.lod->accept(this);
+        break;
+    case ir_txd:
+        ralloc_asprintf_append (&buffer, "(");
+        ir->lod_info.grad.dPdx->accept(this);
+        ralloc_asprintf_append (&buffer, " ");
+        ir->lod_info.grad.dPdy->accept(this);
+        ralloc_asprintf_append (&buffer, ")");
+        break;
+    case ir_tg4:
+    case ir_lod:
+    case ir_txf_ms:
+    case ir_query_levels:
+        break; // FIXME: ir_txf_ms how ?
+    };
+    ralloc_asprintf_append (&buffer, ")");
 }
 
 void ir_print_agal_visitor::visit(ir_swizzle *ir)
@@ -494,9 +510,9 @@ void ir_print_agal_visitor::visit(ir_dereference_array *ir)
 int countElements(ir_instruction *ir)
 {
 	if(ir->as_swizzle()) {
-		return ir->as_swizzle()->mask.num_components;
+        return ir->as_swizzle()->mask.num_components;
 	} else if(ir->as_variable()) {
-		return ir->as_variable()->component_slots();
+		return ir->as_variable()->type->component_slots();
 	} else if (ir->as_dereference_variable()) {
 		return countElements(ir->as_dereference_variable()->var);
 	} else if (ir->as_dereference_array()) {
@@ -556,7 +572,7 @@ void ir_print_agal_visitor::visit(ir_assignment *ir)
 	if(strlen(mask) < 4 && ir->lhs->as_dereference_variable()) {
 		ir_dereference_variable *dv = ir->lhs->as_dereference_variable();
 		ir_variable *var =  dv->variable_referenced();
-		if(var->mode == ir_var_out && !hash_table_find(globals->fullywritten, var)) {
+		if(var->data.mode == ir_var_shader_out && !hash_table_find(globals->fullywritten, var)) {
 			// this out param hasn't been written too yet
 			// as a terrible hack we fully write to all components using
 			// whatever is in the first constant var
@@ -600,7 +616,7 @@ void ir_print_agal_visitor::visit(ir_assignment *ir)
 				}
 
 				if(var1) {
-					int sz = var1->component_slots();
+					int sz = var1->type->component_slots();
 					switch(sz) {
 						case 9:
 						case 12:
@@ -617,7 +633,7 @@ void ir_print_agal_visitor::visit(ir_assignment *ir)
 					}
 				}
 				if(var2) {
-					int sz = var2->component_slots();
+					int sz = var2->type->component_slots();
 					switch(sz) {
 						case 9:
 						case 12:
@@ -655,7 +671,7 @@ void ir_print_agal_visitor::visit(ir_assignment *ir)
       			ralloc_asprintf_append (&buffer, (readComponents == 3) ? "dp3 " : "dp4 ");
       			isBinOp=true;
 				break;
-			
+
 			case ir_binop_logic_and: ralloc_asprintf_append (&buffer, "add "); isBinOp=true; break;
 
 			case ir_binop_less: ralloc_asprintf_append (&buffer, "slt "); isBinOp=true; break;
@@ -691,30 +707,31 @@ void ir_print_agal_visitor::visit(ir_assignment *ir)
       op1 = rhs;
     } else if(rhs->as_call()) {
     	ir_call *call = rhs->as_call();
-    	exec_list_iterator args = call->iterator();
-    	const char *name = call->get_callee()->function_name();
-	  	if     (strcmp(name, "normalize") == 0) { ralloc_asprintf_append (&buffer, "nrm "); op1 = (ir_instruction*)args.get(); }
-      	else if(strcmp(name, "fract") == 0)     { ralloc_asprintf_append (&buffer, "frc "); op1 = (ir_instruction*)args.get(); }
-      	else if(strcmp(name, "sin") == 0)       { ralloc_asprintf_append (&buffer, "sin "); op1 = (ir_instruction*)args.get(); }
-      	else if(strcmp(name, "cos") == 0)       { ralloc_asprintf_append (&buffer, "cos "); op1 = (ir_instruction*)args.get(); }
-      	else if(strcmp(name, "abs") == 0)       { ralloc_asprintf_append (&buffer, "abs "); op1 = (ir_instruction*)args.get(); }
-      	else if(strcmp(name, "saturate") == 0)  { ralloc_asprintf_append (&buffer, "sat "); op1 = (ir_instruction*)args.get(); }
-      	else if(strcmp(name, "abs") == 0)       { ralloc_asprintf_append (&buffer, "abs "); op1 = (ir_instruction*)args.get(); }
-      	else if(strcmp(name, "dot") == 0)       { 
-      		op1 = (ir_instruction*)args.get();
-      		args.next(); 
-      		op2 = (ir_instruction*)args.get();
+    	// exec_list_iterator args = call->iterator();
+    	const char *name = call->callee->function_name();
+        exec_node *args = call->actual_parameters.get_head();
+	  	if     (strcmp(name, "normalize") == 0) { ralloc_asprintf_append (&buffer, "nrm "); op1 = (ir_instruction*)args; }
+      	else if(strcmp(name, "fract") == 0)     { ralloc_asprintf_append (&buffer, "frc "); op1 = (ir_instruction*)args; }
+      	else if(strcmp(name, "sin") == 0)       { ralloc_asprintf_append (&buffer, "sin "); op1 = (ir_instruction*)args; }
+      	else if(strcmp(name, "cos") == 0)       { ralloc_asprintf_append (&buffer, "cos "); op1 = (ir_instruction*)args; }
+      	else if(strcmp(name, "abs") == 0)       { ralloc_asprintf_append (&buffer, "abs "); op1 = (ir_instruction*)args; }
+      	else if(strcmp(name, "saturate") == 0)  { ralloc_asprintf_append (&buffer, "sat "); op1 = (ir_instruction*)args; }
+      	else if(strcmp(name, "abs") == 0)       { ralloc_asprintf_append (&buffer, "abs "); op1 = (ir_instruction*)args; }
+      	else if(strcmp(name, "dot") == 0)       {
+      		op1 = (ir_instruction*)args;
+      		args = args->get_next();
+      		op2 = (ir_instruction*)args;
       		isBinOp = true;
       		int ec1 = countElements(op1);
       		int ec2 = countElements(op2);
-      		readComponents = min(ec1,ec2); 
+      		readComponents = min(ec1,ec2);
       		ralloc_asprintf_append (&buffer, (readComponents == 3) ? "dp3 " : "dp4 ");
       	}
-      	else if(strcmp(name, "pow") == 0)       { ralloc_asprintf_append (&buffer, "pow "); op1 = (ir_instruction*)args.get(); args.next(); op2 = (ir_instruction*)args.get(); isBinOp = true; }
-      	else if(strcmp(name, "cross") == 0)     { ralloc_asprintf_append (&buffer, "crs "); op1 = (ir_instruction*)args.get(); args.next(); op2 = (ir_instruction*)args.get(); isBinOp = true; readComponents = 3; }
-      	else if(strcmp(name, "clamp") == 0)     { ralloc_asprintf_append (&buffer, "sat "); op1 = (ir_instruction*)args.get(); args.next(); op2 = (ir_instruction*)args.get(); isBinOp = true; }
-      	else if(strcmp(name, "max") == 0)       { ralloc_asprintf_append (&buffer, "max "); op1 = (ir_instruction*)args.get(); args.next(); op2 = (ir_instruction*)args.get(); isBinOp = true; }
-      	else if(strcmp(name, "min") == 0)       { ralloc_asprintf_append (&buffer, "min "); op1 = (ir_instruction*)args.get(); args.next(); op2 = (ir_instruction*)args.get(); isBinOp = true; }
+      	else if(strcmp(name, "pow") == 0)       { ralloc_asprintf_append (&buffer, "pow "); op1 = (ir_instruction*)args; args = args->get_next(); op2 = (ir_instruction*)args; isBinOp = true; }
+      	else if(strcmp(name, "cross") == 0)     { ralloc_asprintf_append (&buffer, "crs "); op1 = (ir_instruction*)args; args = args->get_next(); op2 = (ir_instruction*)args; isBinOp = true; readComponents = 3; }
+      	else if(strcmp(name, "clamp") == 0)     { ralloc_asprintf_append (&buffer, "sat "); op1 = (ir_instruction*)args; args = args->get_next(); op2 = (ir_instruction*)args; isBinOp = true; }
+      	else if(strcmp(name, "max") == 0)       { ralloc_asprintf_append (&buffer, "max "); op1 = (ir_instruction*)args; args = args->get_next(); op2 = (ir_instruction*)args; isBinOp = true; }
+      	else if(strcmp(name, "min") == 0)       { ralloc_asprintf_append (&buffer, "min "); op1 = (ir_instruction*)args; args = args->get_next(); op2 = (ir_instruction*)args; isBinOp = true; }
       	else {
       		ralloc_asprintf_append (&buffer, "UNHANDLED FUNCTION: %s", name);
 			return;
@@ -814,16 +831,15 @@ void ir_print_agal_visitor::visit(ir_constant *ir)
 void
 ir_print_agal_visitor::visit(ir_call *ir)
 {
-   ralloc_asprintf_append (&buffer, "%s (", ir->callee_name());
-   bool first = true;
-   foreach_iter(exec_list_iterator, iter, *ir) {
-      ir_instruction *const inst = (ir_instruction *) iter.get();
-	  if (!first)
-		  ralloc_asprintf_append (&buffer, ", ");
-      inst->accept(this);
-	  first = false;
-   }
-   ralloc_asprintf_append (&buffer, ")");
+    ralloc_asprintf_append (&buffer, "%s (", ir->callee_name());
+    bool first = true;
+    foreach_in_list(ir_instruction, param, &ir->actual_parameters) {
+        if (!first)
+            ralloc_asprintf_append (&buffer, ", ");
+        param->accept(this);
+        first = false;
+    }
+    ralloc_asprintf_append (&buffer, ")");
 }
 
 void
@@ -874,3 +890,24 @@ ir_print_agal_visitor::visit(ir_loop_jump *ir)
 {
 	ralloc_asprintf_append (&state->info_log, "\ndynamic looping is unsupported in agal.\n");
 }
+
+void
+ir_print_agal_visitor::visit(ir_precision_statement *ir) {
+	ralloc_asprintf_append (&state->info_log, "\nprecision statement is unsupported in agal.\n");
+}
+
+void
+ir_print_agal_visitor::visit(ir_typedecl_statement *ir) {
+	ralloc_asprintf_append (&state->info_log, "\ntypedecl statement is unsupported in agal.\n");
+}
+
+void
+ir_print_agal_visitor::visit(ir_emit_vertex *ir) {
+	ralloc_asprintf_append (&state->info_log, "\nemit vertex is unsupported in agal.\n");
+}
+
+void
+ir_print_agal_visitor::visit(ir_end_primitive *ir) {
+	ralloc_asprintf_append (&state->info_log, "\nend primitive is unsupported in agal.\n");
+}
+

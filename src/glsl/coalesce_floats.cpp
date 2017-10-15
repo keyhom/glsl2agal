@@ -215,7 +215,7 @@ ir_visitor_status ir_coalesce_floats_visitor::visit(ir_variable *v)
    if(!v) abort();
 
    void *ctx = ralloc_parent(v);
-   if(v->type == glsl_type::float_type && (v->mode == ir_var_temporary || v->mode == ir_var_auto)) {
+   if(v->type == glsl_type::float_type && (v->data.mode == ir_var_temporary || v->data.mode == ir_var_auto)) {
 
       //fprintf(stderr, "found var: %p %s\n", v, v->name);
 

@@ -33,16 +33,20 @@
 #include "ir_visitor.h"
 #include "glsl_types.h"
 
-class variable_entry : public exec_node
+class ir_variable_refcount_entry
 {
 public:
-   variable_entry(ir_variable *var);
+   ir_variable_refcount_entry(ir_variable *var);
 
    ir_variable *var; /* The key: the variable's pointer. */
    ir_assignment *assign; /* An assignment to the variable, if any */
 
    /** Number of times the variable is referenced, including assignments. */
    unsigned referenced_count;
+
+   /** Number of times the variable was referenced, excluding cases when it was on RHS
+    * of assignment of the same variable. */
+   unsigned referenced_count_noself;
 
    /** Number of times the variable is assigned. */
    unsigned assigned_count;
@@ -52,27 +56,21 @@ public:
 
 class ir_variable_refcount_visitor : public ir_hierarchical_visitor {
 public:
-   ir_variable_refcount_visitor(void)
-   {
-      this->mem_ctx = ralloc_context(NULL);
-      this->variable_list.make_empty();
-   }
-
-   ~ir_variable_refcount_visitor(void)
-   {
-      ralloc_free(this->mem_ctx);
-   }
+   ir_variable_refcount_visitor(void);
+   ~ir_variable_refcount_visitor(void);
 
    virtual ir_visitor_status visit(ir_variable *);
    virtual ir_visitor_status visit(ir_dereference_variable *);
 
    virtual ir_visitor_status visit_enter(ir_function_signature *);
+   virtual ir_visitor_status visit_enter(ir_assignment *);
    virtual ir_visitor_status visit_leave(ir_assignment *);
 
-   variable_entry *get_variable_entry(ir_variable *var);
+   ir_variable_refcount_entry *get_variable_entry(ir_variable *var);
+   ir_variable_refcount_entry *find_variable_entry(ir_variable *var);
 
-   /* List of variable_entry */
-   exec_list variable_list;
+   struct hash_table *ht;
+   ir_variable* current_lhs;
 
    void *mem_ctx;
 };

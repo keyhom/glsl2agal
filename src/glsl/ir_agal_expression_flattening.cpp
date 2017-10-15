@@ -120,10 +120,10 @@ ir_visitor_status ir_agal_expression_flattening_visitor::visit_enter(ir_call *ex
 {
    if(verifierAppeasement) {
       bool isAllConst = true;
-      foreach_list_safe(_arg, &expr->actual_parameters) {
+      foreach_in_list_safe(exec_node, _arg, &expr->actual_parameters) {
          ir_rvalue *arg = (ir_rvalue*)_arg;
          ir_variable *v = digOutVar(arg);
-         bool isOperandConst = v && (v->mode == ir_var_uniform || v->constant_value);
+         bool isOperandConst = v && (v->data.mode == ir_var_uniform || v->constant_value);
          if(!isOperandConst) isOperandConst = digOutConst(arg);
          isAllConst = isOperandConst && isAllConst;
       }
@@ -137,7 +137,7 @@ ir_visitor_status ir_agal_expression_flattening_visitor::visit_enter(ir_call *ex
       return visit_continue;
    }
 
-   promoteToVar(expr);
+   promoteToVar((ir_rvalue *)expr);
    return visit_continue;
 }
 
@@ -215,7 +215,7 @@ ir_visitor_status ir_agal_expression_flattening_visitor::visit_enter(ir_expressi
       bool isAllConst = true;
       for(int i=0; i<expr->get_num_operands(); i++) {
          ir_variable *v = digOutVar(expr->operands[i]);
-         bool isOperandConst = v && (v->mode == ir_var_uniform || v->constant_value);
+         bool isOperandConst = v && (v->data.mode == ir_var_uniform || v->constant_value);
          if(!isOperandConst) isOperandConst = digOutConst(expr->operands[i]);
          isAllConst = isOperandConst && isAllConst;
       }
@@ -292,9 +292,10 @@ do_agal_expression_flattening(exec_list *instructions, bool verifierAppeasement)
    if(v.promotioncount == 0) return false;
 
    ir_expression_replacing_visitor r(v.promotions);
-   foreach_iter(exec_list_iterator, iter, *instructions) {
-      ir_instruction *ir = (ir_instruction *)iter.get();
-      ir->accept(&r);
+
+   foreach_in_list(exec_node, iter, instructions) {
+       ir_instruction *ir = (ir_instruction *)iter;
+       ir->accept(&r);
    }
 
    return true;

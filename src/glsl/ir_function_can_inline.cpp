@@ -59,13 +59,9 @@ bool
 can_inline(ir_call *call)
 {
    ir_function_can_inline_visitor v;
-   const ir_function_signature *callee = call->get_callee();
-   //if (callee->is_builtin)
-   //	   return false;
-   if (!callee->is_defined) {
-      //fprintf(stderr, "can't inline: %s (not defined)\n", call->callee_name());
+   const ir_function_signature *callee = call->callee;
+   if (!callee->is_defined)
       return false;
-   }
 
    v.run((exec_list *) &callee->body);
 
@@ -75,9 +71,6 @@ can_inline(ir_call *call)
    ir_instruction *last = (ir_instruction *)callee->body.get_tail();
    if (last == NULL || !last->as_return())
       v.num_returns++;
-
-   //if(v.num_returns != 1)
-   //   fprintf(stderr, "can't inline: %s (num returns %d)\n", call->callee_name(), v.num_returns);
 
    return v.num_returns == 1;
 }

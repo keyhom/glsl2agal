@@ -24,7 +24,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "ir_optimization.h"
 #include "glsl_types.h"
 #include "program/hash_table.h"
-#include "builtin_variables.h"
 #include "replaceInstruction.h"
 #include "ir_print_agal_visitor.h"
 #include <list>

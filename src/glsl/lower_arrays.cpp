@@ -66,8 +66,8 @@ ir_array_decomposer_visitor::computeNewRValue(ir_rvalue *rval)
       }
 
       // make sure unsized arrays end up with a reasonable size
-      if(src->max_array_access < ci->get_int_component(0)) {
-         src->max_array_access = ci->get_int_component(0);
+      if(src->data.max_array_access < ci->get_int_component(0)) {
+         src->data.max_array_access = ci->get_int_component(0);
          //fprintf(stderr, "updating max access: %d\n", src->max_array_access);
       }
 
@@ -78,18 +78,18 @@ ir_array_decomposer_visitor::computeNewRValue(ir_rvalue *rval)
 
       ir_variable *v = (ir_variable*)hash_table_find(varhash, &nm[0]);
       if(!v) {
-         v = new (ctx) ir_variable(src->type->element_type(), ralloc_strdup(ctx, &nm[0]), (ir_variable_mode)src->mode, (glsl_precision)src->precision);
-         v->parent = src;
-         v->location = ci->get_int_component(0);
+         v = new (ctx) ir_variable(src->type->element_type(), ralloc_strdup(ctx, &nm[0]), (ir_variable_mode)src->data.mode, (glsl_precision)src->data.precision);
+         v->data.parent = src;
+         v->data.location = ci->get_int_component(0);
          basevar->insert_before(v);
          hash_table_insert(varhash, v, ralloc_strdup(ctx, &nm[0]));
       }
-      
+
       ir_dereference_variable *dv = new(ctx) ir_dereference_variable(v);
 
       int c = v->type->vector_elements;
       if(c == 4) {
-         return dv;
+         return (ir_rvalue *) dv;
       }
 
       char si[5] = "xyzw";
@@ -106,15 +106,15 @@ ir_array_decomposer_visitor::visit(ir_variable *ir)
 {
    if(!basevar) basevar = ir;
 
-   if(ir->type->is_array()) {   
+   if(ir->type->is_array()) {
       unsigned array_count = ir->type->array_size();
       void *ctx = ir;
       while(array_count-- > 0) {
          char nm[512];
          sprintf(&nm[0], "%s_%d", ir->name, array_count);
-         ir_variable *newvar = new (ctx) ir_variable(ir->type->element_type(), ralloc_strdup(ctx, &nm[0]), (ir_variable_mode)ir->mode, (glsl_precision)ir->precision);
-         newvar->parent = ir;
-         newvar->location = array_count;
+         ir_variable *newvar = new (ctx) ir_variable(ir->type->element_type(), ralloc_strdup(ctx, &nm[0]), (ir_variable_mode)ir->data.mode, (glsl_precision)ir->data.precision);
+         newvar->data.parent = ir;
+         newvar->data.location = array_count;
          base_ir->insert_after(newvar);
          hash_table_insert(varhash, newvar, ralloc_strdup(ctx, &nm[0]));
       }
@@ -124,9 +124,9 @@ ir_array_decomposer_visitor::visit(ir_variable *ir)
       while(n-- > 0) {
          char nm[512];
          sprintf(&nm[0], "%s_%d", ir->name, n);
-         ir_variable *newvar = new (ctx) ir_variable(glsl_type::vec4_type, ralloc_strdup(ctx, &nm[0]), (ir_variable_mode)ir->mode, (glsl_precision)ir->precision);
-         newvar->parent = ir;
-         newvar->location = n;
+         ir_variable *newvar = new (ctx) ir_variable(glsl_type::vec4_type, ralloc_strdup(ctx, &nm[0]), (ir_variable_mode)ir->data.mode, (glsl_precision)ir->data.precision);
+         newvar->data.parent = ir;
+         newvar->data.location = n;
          base_ir->insert_after(newvar);
          hash_table_insert(varhash, newvar, ralloc_strdup(ctx, &nm[0]));
       }

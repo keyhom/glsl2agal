@@ -83,12 +83,17 @@ void reschedule_single_function(exec_list *body, _mesa_glsl_parse_state *state, 
    body->move_nodes_to(&tmp);
 
    // Float variables to the top of the function
-   foreach_list_safe(instr, &tmp) {
-      ir_instruction *const stmt = (ir_instruction *)instr;
+   foreach_in_list_safe(ir_instruction, stmt, &tmp) {
+       if (stmt->as_variable()) {
+           stmt->remove();
+           body->push_tail((exec_node *)stmt);
+       }
+   }
+   foreach_in_list_safe(ir_instruction, stmt, &tmp) {
       if(stmt->as_variable())
       {
          stmt->remove();
-         body->push_tail(stmt);
+         body->push_tail((exec_node *)stmt);
       }
    }
 
@@ -97,8 +102,7 @@ void reschedule_single_function(exec_list *body, _mesa_glsl_parse_state *state, 
 
    //fprintf(stderr, "strict digraph defusecahin {\n");
 
-   foreach_list_safe(instr, &tmp) {
-      
+   foreach_in_list_safe(ir_instruction, instr, &tmp) {
       ir_assignment *ass = ((ir_instruction *)instr)->as_assignment();
       if(!ass)
          abort();
@@ -117,7 +121,7 @@ void reschedule_single_function(exec_list *body, _mesa_glsl_parse_state *state, 
 
       // replace the current definition of this variable
       // with the current instruction
-      
+
       ir_instruction *prevdef = (ir_instruction*)hash_table_find(definedBy, def);
       if(prevdef) {
          hash_table_remove(definedBy, def);
@@ -139,7 +143,7 @@ void reschedule_single_function(exec_list *body, _mesa_glsl_parse_state *state, 
 
       hash_table_insert(definedBy, ass, def);
 
-      
+
 
       //fprintf(stderr, "%p defined %s (%p)\n", ass, def->name, ass->uses->size());
    }
@@ -147,7 +151,7 @@ void reschedule_single_function(exec_list *body, _mesa_glsl_parse_state *state, 
 
    // Find all instructions with no dependencies
    exec_list roots;
-   foreach_list_safe(instr, &tmp) {
+   foreach_in_list_safe(ir_instruction, instr, &tmp) {
       ir_assignment *ass = ((ir_instruction *)instr)->as_assignment();
       if(!ass) abort();
 
@@ -163,7 +167,7 @@ void reschedule_single_function(exec_list *body, _mesa_glsl_parse_state *state, 
 
    while(!roots.is_empty()) {
       ir_assignment *ass = (ir_assignment*)roots.pop_head();
-      body->push_tail(ass);
+      body->push_tail((exec_node *) ass);
       //fprintf(stderr, " scheduled %p (%s)\n", ass, digOutVar(ass->lhs)->name);
 
       //if(ass->uses->size() == 0) continue;
@@ -179,7 +183,7 @@ void reschedule_single_function(exec_list *body, _mesa_glsl_parse_state *state, 
             delete user->uses;
             user->uses = NULL;
 
-            roots.push_head(user);
+            roots.push_head((exec_node *) user);
             //fprintf(stderr, "new root %p (%s)\n", user, digOutVar(user->as_assignment()->lhs)->name);
          }
       }
@@ -191,15 +195,12 @@ void reschedule_single_function(exec_list *body, _mesa_glsl_parse_state *state, 
 
 exec_list* schedule_instructions(exec_list *instructions, _mesa_glsl_parse_state *state, int mode)
 {
-   foreach_list_safe(n, instructions) {
-      ir_instruction *const stmt = (ir_instruction *) n;
+    foreach_in_list_safe(ir_instruction, stmt, instructions) {
       if(stmt->ir_type == ir_type_function) {
          //fprintf(stderr, "%s\n", stmt->as_function()->name);
-         foreach_list_safe(s, &stmt->as_function()->signatures) {
-            ir_function_signature *const sig = (ir_function_signature *) s;
+          foreach_in_list_safe(ir_function_signature, sig, &stmt->as_function()->signatures) {
             reschedule_single_function(&sig->body, state, mode);
-            foreach_list_safe(f, &sig->body) {
-               ir_instruction *const fstmt = (ir_instruction *) f;
+            foreach_in_list_safe(ir_instruction, fstmt, &sig->body) {
                //fprintf(stderr, "-- %d\n", fstmt->ir_type);
             }
          }

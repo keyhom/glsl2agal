@@ -118,7 +118,7 @@ ir_coalesce_temps_visitor::handleDereference(ir_dereference *ir)
 {
    ir_variable *var = ir->variable_referenced();
 
-   if(!(var->mode == ir_var_auto || var->mode == ir_var_temporary))
+   if(!(var->data.mode == ir_var_auto || var->data.mode == ir_var_temporary))
       return visit_continue;
 
    //fprintf(stderr, "=== ir_dereference_variable %p %s ===\n", var, var->name);
@@ -128,7 +128,7 @@ ir_coalesce_temps_visitor::handleDereference(ir_dereference *ir)
       bool allocated = false;
       for(int i=0; i<nAgalTemps; i++) {
          if(tempSlotsUsage[i] == 0) {
-            tempSlotsUsage[i] = var->component_slots();
+            tempSlotsUsage[i] = var->type->component_slots();
             tempSlotVarAssignments[i][0] = var;
             allocated = true;
             break;
