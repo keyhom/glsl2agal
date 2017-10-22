@@ -214,7 +214,7 @@ _mesa_align_realloc(void *oldBuffer, size_t oldSize, size_t newSize,
 /*@{*/
 
 
-#ifndef HAVE___BUILTIN_FFS
+#if !defined(HAVE___BUILTIN_FFS) && __STDC_VERSION__ < 199901L
 /**
  * Find the first bit set in a word.
  */
@@ -245,7 +245,7 @@ ffs(int i)
 }
 #endif
 
-#ifndef HAVE___BUILTIN_FFSLL
+#if !defined(HAVE___BUILTIN_FFS) && __STDC_VERSION__ < 199901L
 /**
  * Find position of first bit set in given value.
  * XXX Warning: this function can only be used on 64-bit systems!
