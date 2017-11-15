@@ -201,13 +201,13 @@ struct glslopt_shader
 
 static inline void debug_print_ir (const char* name, exec_list* ir, _mesa_glsl_parse_state* state, void* memctx)
 {
-	#if 0
+    #if 0
 	printf("**** %s:\n", name);
 //	_mesa_print_ir (ir, state);
 	char* foobar = _mesa_print_ir_glsl(ir, state, ralloc_strdup(memctx, ""), kPrintGlslFragment);
 	printf("%s\n", foobar);
 	validate_ir_tree(ir);
-	#endif
+    #endif
 }
 
 
@@ -565,12 +565,13 @@ void dump(const char *nm, exec_list *ir, _mesa_glsl_parse_state *state, PrintGls
 	if(!glslOptimizerVerbose) return;
 
 	fprintf(stderr, "glsl %s:\n%s", nm, _mesa_print_ir_glsl(ir, state, NULL, printMode));
+    fprintf(stderr, "//------------------------------------------------------------------------------\n");
 	if(validate) {
 		fprintf(stderr, "validate: \n"); validate_ir_tree(ir);
 	}
 }
 
-static void do_optimization_passes(exec_list* ir, bool linked, _mesa_glsl_parse_state* state, void* mem_ctx)
+static void do_optimization_passes(exec_list* ir, bool linked, _mesa_glsl_parse_state* state, void* mem_ctx, bool agal = false)
 {
 	bool progress;
 	// FIXME: Shouldn't need to bound the number of passes
@@ -603,7 +604,8 @@ static void do_optimization_passes(exec_list* ir, bool linked, _mesa_glsl_parse_
 		}
 		progress2 = do_dead_code_local(ir); progress |= progress2; if (progress2) debug_print_ir ("After dead code local", ir, state, mem_ctx);
 		progress2 = propagate_precision (ir, state->metal_target); progress |= progress2; if (progress2) debug_print_ir ("After prec propagation", ir, state, mem_ctx);
-		// progress2 = do_tree_grafting(ir); progress |= progress2; if (progress2) debug_print_ir ("After tree grafting", ir, state, mem_ctx); // XXX: comment for agal ?
+        if (!agal)
+            progress2 = do_tree_grafting(ir); progress |= progress2; if (progress2) debug_print_ir ("After tree grafting", ir, state, mem_ctx);
 		progress2 = do_constant_propagation(ir); progress |= progress2; if (progress2) debug_print_ir ("After const propagation", ir, state, mem_ctx);
 		if (linked) {
 			progress2 = do_constant_variable(ir); progress |= progress2; if (progress2) debug_print_ir ("After const variable", ir, state, mem_ctx);
@@ -615,9 +617,11 @@ static void do_optimization_passes(exec_list* ir, bool linked, _mesa_glsl_parse_
 		progress2 = do_cse(ir); progress |= progress2; if (progress2) debug_print_ir ("After CSE", ir, state, mem_ctx);
 		progress2 = do_rebalance_tree(ir); progress |= progress2; if (progress2) debug_print_ir ("After rebalance tree", ir, state, mem_ctx);
 		progress2 = do_algebraic(ir, state->ctx->Const.NativeIntegers, &state->ctx->Const.ShaderCompilerOptions[state->stage]); progress |= progress2; if (progress2) debug_print_ir ("After algebraic", ir, state, mem_ctx);
-        progress2 = lower_discard(ir); progress |= progress2; if (progress2) debug_print_ir ("After lower discard", ir, state, mem_ctx); // XXX: new for agal
+        if (agal)
+            progress2 = lower_discard(ir); progress |= progress2; if (progress2) debug_print_ir ("After lower discard", ir, state, mem_ctx);
         progress2 = do_lower_jumps(ir); progress |= progress2; if (progress2) debug_print_ir ("After lower jumps", ir, state, mem_ctx);
-        progress2 = lower_if_to_cond_assign(ir); progress |= progress2; if (progress2) debug_print_ir ("After lower if", ir, state, mem_ctx); // XXX: new for agal
+        if (agal)
+            progress2 = lower_if_to_cond_assign(ir); progress |= progress2; if (progress2) debug_print_ir ("After lower if", ir, state, mem_ctx);
         progress2 = do_vec_index_to_swizzle(ir); progress |= progress2; if (progress2) debug_print_ir ("After vec index to swizzle", ir, state, mem_ctx);
 		progress2 = lower_vector_insert(ir, false); progress |= progress2; if (progress2) debug_print_ir ("After lower vector insert", ir, state, mem_ctx);
 		progress2 = do_swizzle_swizzle(ir); progress |= progress2; if (progress2) debug_print_ir ("After swizzle swizzle", ir, state, mem_ctx);
@@ -637,13 +641,15 @@ static void do_optimization_passes(exec_list* ir, bool linked, _mesa_glsl_parse_
 			delete ls;
 		}
 
-        // XXX: process with agals pass after below ?
-        progress2 = do_agal_expression_flattening(ir, false); progress |= progress2;
-        do_lower_conditionl_assigns_to_agal(ir); dump("post-lowercond", ir, state, printMode);
+        if (agal) {
+            progress2 = do_agal_expression_flattening(ir, false); progress |= progress2; if (progress2) debug_print_ir("After agal expression flattening", ir, state, mem_ctx);
+            progress2 = do_lower_conditionl_assigns_to_agal(ir); progress |= progress2; if (progress2) debug_print_ir("post-lowercond", ir, state, mem_ctx);
+            progress2 = lower_equivalent_builtin_to_agal(ir); progress |= progress2; if (progress2) debug_print_ir("After builtin equivalence flattening", ir, state, mem_ctx);
+        }
 
 	} while (progress && passes < kMaximumPasses);
 
-	if (!state->metal_target)
+	if (!state->metal_target && !agal)
 	{
 		// GLSL/ES does not have saturate, so lower it
 		lower_instructions(ir, SAT_TO_CLAMP);
@@ -742,6 +748,22 @@ static void find_shader_variables(glslopt_shader* sh, exec_list* ir)
 	}
 }
 
+std::string str_replace(const std::string &str, const std::string &pattern, const std::string &dstPattern, int count = -1)
+{
+    std::string retStr(str);
+    std::string::size_type pos = 0;
+    int l_count = 0;
+    if (-1 == count)
+        count = retStr.size();
+    while ((pos = retStr.find(pattern, pos)) != std::string::npos)
+    {
+        retStr.replace(pos, pattern.size(), dstPattern);
+        if (++l_count >= count)
+            break;
+        pos += dstPattern.size();
+    }
+    return retStr;
+}
 
 glslopt_shader* glslopt_optimize (glslopt_ctx* ctx, glslopt_shader_type type, const char* shaderSource, unsigned options)
 {
@@ -783,6 +805,8 @@ glslopt_shader* glslopt_optimize (glslopt_ctx* ctx, glslopt_shader_type type, co
 		}
 	}
 
+    const bool debug = options & kGlslOptionDebugInfo;
+
 	_mesa_glsl_lexer_ctor (state, shaderSource);
 	_mesa_glsl_parse (state);
 	_mesa_glsl_lexer_dtor (state);
@@ -815,6 +839,8 @@ glslopt_shader* glslopt_optimize (glslopt_ctx* ctx, glslopt_shader_type type, co
 
 	dump("pre-opt", ir, state, printMode);
 
+    const bool toAgal = options & kGlslOptionToAgalShader;
+
 	// Optimization passes
 	const bool linked = !(options & kGlslOptionNotFullShader);
 	if (!state->error && !ir->is_empty() && !(options & kGlslOptionNotFullShader))
@@ -839,148 +865,143 @@ glslopt_shader* glslopt_optimize (glslopt_ctx* ctx, glslopt_shader_type type, co
 	if (!state->error && !ir->is_empty())
 	{
 		const bool linked = !(options & kGlslOptionNotFullShader);
-		do_optimization_passes(ir, linked, state, shader);
+		do_optimization_passes(ir, linked, state, shader, toAgal);
 
-        dump("post-opt", ir, state, printMode);
+        if (toAgal) {
+            dump("post-opt", ir, state, printMode);
+            //do_tree_grafting(ir); dump("after-graft", ir, state, printMode);
+            //do_agal_expression_flattening(ir, true); dump("after-flattening", ir, state, printMode);
+            do_lower_arrays(ir); dump("after-lower-arrays", ir, state, printMode);
+            do_tree_grafting(ir); dump("after-graft", ir, state, printMode);
+            do_agal_expression_flattening(ir, true); dump("after-flattening", ir, state, printMode);
+            do_algebraic(ir, state->ctx->Const.NativeIntegers, &state->ctx->Const.ShaderCompilerOptions[state->stage]); dump("after-algebraic", ir, state, printMode);
+            for (int i = 0; i < 6; i++) {
+                do_shorten_liveranges(ir);  dump("after-shorten-liveranges", ir, state, printMode);
+            }
 
-        do_tree_grafting(ir); dump("after-graft", ir, state, printMode);
+            do_hoist_constants(ir); dump("after-hoist-constants", ir, state, printMode);
+            do_remove_casts(ir); dump("after-remove-casts", ir, state, printMode);
+            // do_agal_expression_flattening(ir, true); dump("after-flattening", ir, state, printMode);
 
-
-
-        do_agal_expression_flattening(ir, true); dump("after flattening", ir, state, printMode);
-
-        do_lower_arrays(ir); dump("post-opt", ir, state, printMode);
-
-        //do_tree_grafting(ir); dump("after-graft", ir, state, printMode);
-
-        do_agal_expression_flattening(ir, true); dump("post-opt", ir, state, printMode);
-
-        do_algebraic(ir, state->ctx->Const.NativeIntegers, &state->ctx->Const.ShaderCompilerOptions[state->stage]); dump("post-opt", ir, state, printMode);
-
-        do_remove_casts(ir); dump("post-opt", ir, state, printMode);
-
-        do_hoist_constants(ir); dump("post-opt", ir, state, printMode);
-
-        do_agal_expression_flattening(ir, true); dump("post-opt", ir, state, printMode);
-
-        for(int i=0; i<6; i++) {
-            do_shorten_liveranges(ir);  dump("after-shorten-liveranges", ir, state, printMode);
+            // dump("post-opt", ir, state, printMode);
+            do_swizzle_everything(ir); dump("after-swizz", ir, state, printMode);
+            do_coalesce_floats(ir); dump("after-coalesce-floats", ir, state, printMode);
+            do_swizzle_swizzle(ir); dump("after-swizzle-swizzle", ir, state, printMode);
+            do_coalesce_temps(ir); dump("after-coalesce-temps", ir, state, printMode);
+            do_unique_variables(ir); dump("after-unique-varaibles", ir, state, printMode);
+            oldnames = do_remap_agalvars(ir, printMode); dump("after-remap-agalvars", ir, state, printMode);
         }
-
-        dump("post-opt", ir, state, printMode);
-
-        do_swizzle_everything(ir); dump("post-swizz", ir, state, printMode);
-
-        do_coalesce_floats(ir);
-
-        do_swizzle_swizzle(ir);
-
-        do_coalesce_temps(ir); dump("post-opt", ir, state, printMode);
-
-        do_unique_variables(ir); dump("post-unique", ir, state, printMode);
-
-        oldnames = do_remap_agalvars(ir, printMode);
-
-		validate_ir_tree(ir);
+        validate_ir_tree(ir);
 	}
+
+    if (glslOptimizerVerbose)
+        fflush(stderr);
 
 	// Final optimized output
-    // if (!state->error) {
-        // if (ctx->target == kGlslTargetMetal)
-        //     shader->optimizedOutput = _mesa_print_ir_metal(ir, state, ralloc_strdup(shader, ""), printMode, &shader->uniformsSize);
-        // else
-        //     shader->optimizedOutput = _mesa_print_ir_glsl(ir, state, ralloc_strdup(shader, ""), printMode);
-    // }
+    if (!toAgal) {
+        if (!state->error) {
+            if (ctx->target == kGlslTargetMetal)
+                shader->optimizedOutput = _mesa_print_ir_metal(ir, state, ralloc_strdup(shader, ""), printMode, &shader->uniformsSize);
+            else
+                shader->optimizedOutput = _mesa_print_ir_glsl(ir, state, ralloc_strdup(shader, ""), printMode);
+        }
+    }
+    else {
+        const char *agalasmout = strlen(state->info_log) > 0 ? "" : _mesa_print_ir_agal(ir, state, ralloc_strdup(shader, ""), printMode);
 
-    const char *agalasmout = strlen(state->info_log) > 0 ? "" : _mesa_print_ir_agal(ir, state, ralloc_strdup(shader, ""), printMode);
+        const char *infoLog = state->info_log;
+        std::string sanitisedInfoLog;
+        while (infoLog && *infoLog)
+        {
+            switch (*infoLog) {
+                case 10:
+                case 13:
+                    sanitisedInfoLog += "\\n";
+                    break;
+                default:
+                    sanitisedInfoLog += infoLog[0];
+            }
+            infoLog++;
+        }
+        ralloc_asprintf_append(&shader->optimizedOutput, "\"info\":\"%s\"", sanitisedInfoLog.c_str());
 
-	const char *infoLog = state->info_log;
-    std::string sanitisedInfoLog;
-	while(infoLog && *infoLog)
-	{
-        switch(*infoLog) {
-			case 10:
-			case 13:
-				sanitisedInfoLog += "\\n";
-				break;
-			default:
-				sanitisedInfoLog += infoLog[0];
-		}
-		infoLog++;
-	}
-	ralloc_asprintf_append (&shader->optimizedOutput, "\"info\":\"%s\"", sanitisedInfoLog.c_str());
+        // Final optimized output
+        if (strlen(state->info_log) > 0) {
+            ralloc_asprintf_append(&shader->optimizedOutput, "\n}\n");
+        }
+        else {
+            ralloc_asprintf_append(&shader->optimizedOutput, ",\n");
+            //shader->optimizedOutput = NULL;
 
-	// Final optimized output
-	if (strlen(state->info_log) > 0) {
-		ralloc_asprintf_append (&shader->optimizedOutput, "\n}\n");
-	} else {
-		ralloc_asprintf_append (&shader->optimizedOutput, ",\n");
-		//shader->optimizedOutput = NULL;
+            if (debug) {
+                ralloc_asprintf_append(&shader->optimizedOutput, "\"glsl-src\":\"%s\",\n", str_replace(shaderSource, "\n", "\\n").c_str());
+                ralloc_asprintf_append(&shader->optimizedOutput, "\"glsl-raw\":\"%s\",\n", str_replace(shader->rawOutput, "\n", "\\n").c_str());
+                const char *glslout = _mesa_print_ir_glsl(ir, state, ralloc_strdup(ctx->mem_ctx, ""), printMode);
+                ralloc_asprintf_append(&shader->optimizedOutput, "\"glsl-final\":\"%s\",\n", str_replace(glslout, "\n", "\\n").c_str());
+            }
 
-		//ralloc_asprintf_append (&shader->optimizedOutput, "\"glsl-raw\":\"%s\",\n", shader->rawOutput);
+            if (NULL != oldnames) {
+                ralloc_asprintf_append(&shader->optimizedOutput, "\"varnames\" : \n{\n");
 
-		//const char *glslout = _mesa_print_ir_glsl(ir, state, ralloc_strdup(ctx->mem_ctx, ""), printMode);
-		//ralloc_asprintf_append (&shader->optimizedOutput, "\"glsl-final\":\"%s\",\n", glslout);
+                emitComma = false;
+                hash_table_call_foreach(oldnames, print_agal_var_mapping, shader);
+                ralloc_asprintf_append(&shader->optimizedOutput, "},\n");
+            }
 
-		ralloc_asprintf_append (&shader->optimizedOutput, "\"varnames\" : \n{\n");
+            emitComma = false;
+            ralloc_asprintf_append(&shader->optimizedOutput, "\"consts\" : \n{\n");
+            do_print_constants(ir, shader);
+            ralloc_asprintf_append(&shader->optimizedOutput, "},\n");
 
-		emitComma = false;
-		hash_table_call_foreach(oldnames, print_agal_var_mapping, shader);
-		ralloc_asprintf_append (&shader->optimizedOutput, "},\n");
+            emitComma = false;
+            ralloc_asprintf_append(&shader->optimizedOutput, "\"types\" : \n{\n");
+            do_print_types(ir, shader);
+            ralloc_asprintf_append(&shader->optimizedOutput, "},\n");
 
-		emitComma = false;
-		ralloc_asprintf_append (&shader->optimizedOutput, "\"consts\" : \n{\n");
-		do_print_constants(ir, shader);
-		ralloc_asprintf_append (&shader->optimizedOutput, "},\n");
+            emitComma = false;
+            ralloc_asprintf_append(&shader->optimizedOutput, "\"storage\" : \n{\n");
+            do_print_storage(ir, shader);
+            ralloc_asprintf_append(&shader->optimizedOutput, "},\n");
 
-		emitComma = false;
-		ralloc_asprintf_append (&shader->optimizedOutput, "\"types\" : \n{\n");
-		do_print_types(ir, shader);
-		ralloc_asprintf_append (&shader->optimizedOutput, "},\n");
+            if (glslOptimizerVerbose)
+                fprintf(stderr, "agal:\n%s", agalasmout);
+            std::string sanitisedAGAL;
+            const char *asmsrc = agalasmout;
+            while (*asmsrc)
+            {
+                switch (*asmsrc) {
+                    case 10:
+                    case 13:
+                        sanitisedAGAL += "\\n";
+                        break;
+                    default:
+                        sanitisedAGAL += asmsrc[0];
+                }
+                asmsrc++;
+            }
+            ralloc_asprintf_append(&shader->optimizedOutput, "\"agalasm\":\"%s\"\n}\n", sanitisedAGAL.c_str());
 
-		emitComma = false;
-		ralloc_asprintf_append (&shader->optimizedOutput, "\"storage\" : \n{\n");
-		do_print_storage(ir, shader);
-		ralloc_asprintf_append (&shader->optimizedOutput, "},\n");
+            if (false && glslOptimizerVerbose) {
+                char *agalout;
+                size_t agalsz = 0;
+                AGAL::Assemble(agalasmout, printMode == kPrintGlslFragment ? AGAL::shadertype_fragment : AGAL::shadertype_vertex, &agalout, &agalsz);
 
-		if(glslOptimizerVerbose)
-			fprintf(stderr, "agal:\n%s", agalasmout);
-		std::string sanitisedAGAL;
-		const char *asmsrc = agalasmout;
-		while(*asmsrc)
-		{
-			switch(*asmsrc) {
-				case 10:
-				case 13:
-					sanitisedAGAL += "\\n";
-					break;
-				default:
-					sanitisedAGAL += asmsrc[0];
-			}
-			asmsrc++;
-		}
-		ralloc_asprintf_append (&shader->optimizedOutput, "\"agalasm\":\"%s\"\n}\n", sanitisedAGAL.c_str());
+                AGAL::Graph *depgraph = AGAL::CreateDependencyGraph(agalout, agalsz, 0);
+                fprintf(stderr, "digraph agaldepgraph {\n");
+                for(int i=0; i<depgraph->edges.length; i++) {
+                	fprintf(stderr, "%d -> %d\n", depgraph->edges[i].srcidx, depgraph->edges[i].dstidx);
+                }
+                fprintf(stderr, "}\n");
 
-		if(glslOptimizerVerbose) {
-			char *agalout;
-			size_t agalsz = 0;
-			AGAL::Assemble(agalasmout, printMode == kPrintGlslFragment ? AGAL::shadertype_fragment : AGAL::shadertype_vertex, &agalout, &agalsz);
-
-			//AGAL::Graph *depgraph = AGAL::CreateDependencyGraph(agalout, agalsz, 0);
-			//fprintf(stderr, "digraph agaldepgraph {\n");
-			//for(int i=0; i<depgraph->edges.length; i++) {
-			//	fprintf(stderr, "%d -> %d\n", depgraph->edges[i].srcidx, depgraph->edges[i].dstidx);
-			//}
-			//fprintf(stderr, "}\n");
-
-			FlashString disasmout;
-			if(agalout)
-				AGAL::Disassemble (agalout, agalsz, &disasmout);
-			fprintf(stderr, "//--- Disasm ---\n");
-			fprintf(stderr, "%s", disasmout.CStr());
-			fprintf(stderr, "//--- Disasm ---\n");
-		}
-	}
+                FlashString disasmout;
+                if (agalout)
+                    AGAL::Disassemble(agalout, agalsz, &disasmout);
+                fprintf(stderr, "//--- Disasm ---\n");
+                fprintf(stderr, "%s", disasmout.CStr());
+                fprintf(stderr, "//--- Disasm ---\n");
+            }
+        }
+    }
 
 	shader->status = !state->error;
 	shader->infoLog = state->info_log;

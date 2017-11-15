@@ -144,6 +144,7 @@ bool do_remove_casts(exec_list *instructions);
 bool do_coalesce_floats(exec_list *instructions);
 bool do_unique_variables(exec_list *instructions);
 bool do_shorten_liveranges(exec_list *instructions);
+bool lower_equivalent_builtin_to_agal(exec_list *instructions);
 
 exec_list *schedule_instructions(exec_list *instructions, _mesa_glsl_parse_state *state, int mode);
 

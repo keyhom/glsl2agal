@@ -21,6 +21,24 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#pragma once
+#ifndef _IR_UNUSED_STRUCTS_H
+#define _IR_UNUSED_STRUCTS_H
 #include "ir.h"
 
 void do_remove_unused_typedecls(exec_list* instructions);
+
+class ir_struct_usage_visitor : public ir_hierarchical_visitor {
+public:
+	ir_struct_usage_visitor();
+	~ir_struct_usage_visitor(void);
+	
+	virtual ir_visitor_status visit(ir_dereference_variable *);
+	
+	bool has_struct_entry(const glsl_type *t) const;
+	
+	exec_list struct_list;
+	void *mem_ctx;
+};
+
+#endif // _IR_UNUSED_STRUCTS_H

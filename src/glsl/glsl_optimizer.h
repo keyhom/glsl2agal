@@ -31,8 +31,10 @@ enum glslopt_shader_type {
 
 // Options flags for glsl_optimize
 enum glslopt_options {
-	kGlslOptionSkipPreprocessor = (1<<0), // Skip preprocessing shader source. Saves some time if you know you don't need it.
-	kGlslOptionNotFullShader = (1<<1), // Passed shader is not the full shader source. This makes some optimizations weaker.
+    kGlslOptionSkipPreprocessor = (1 << 0), // Skip preprocessing shader source. Saves some time if you know you don't need it.
+    kGlslOptionNotFullShader = (1 << 1), // Passed shader is not the full shader source. This makes some optimizations weaker.
+    kGlslOptionToAgalShader = (1 << 2), // Passed shader translation to agal asm.
+    kGlslOptionDebugInfo = (1 << 3),
 };
 
 // Optimizer target language

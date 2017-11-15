@@ -33,10 +33,12 @@ public:
    ir_instruction *varbase;
    int tmpcount;
    hash_table *assignedvars;
+   bool progress;
    ir_lower_conditional_assigns_to_agal_visitor()
    {
       varbase = NULL;
       tmpcount = 0;
+      progress = false;
       assignedvars = hash_table_ctor(0, hash_table_pointer_hash, hash_table_pointer_compare);
    }
 
@@ -128,6 +130,7 @@ ir_lower_conditional_assigns_to_agal_visitor::visit_leave(ir_assignment *ir)
         new (ctx) ir_dereference_variable(tmpval)));
    mult2->insert_after(add);
 
+   progress = true;
    ir->condition = NULL;
 
    return visit_continue;
@@ -139,5 +142,5 @@ do_lower_conditionl_assigns_to_agal(exec_list *instructions)
 {
    ir_lower_conditional_assigns_to_agal_visitor v;
    v.run(instructions);
-   return false;
+   return v.progress;
 }
