@@ -1470,6 +1470,7 @@ enum ir_expression_operation {
    ir_binop_max,
 
    ir_binop_pow,
+    ir_binop_cross,
 
    /**
     * \name Lowered floating point packing operations.

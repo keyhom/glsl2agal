@@ -412,6 +412,10 @@ ir_expression::ir_expression(int op, ir_rvalue *op0, ir_rvalue *op1)
       this->type = glsl_type::float_type;
       break;
 
+   case ir_binop_cross:
+       this->type = glsl_type::vec3_type;
+       break;
+
    case ir_binop_pack_half_2x16_split:
       this->type = glsl_type::uint_type;
       break;
@@ -584,6 +588,7 @@ static const char *const operator_strs[] = {
    "min",
    "max",
    "pow",
+   "cross",
    "packHalf2x16_split",
    "bfm",
    "ubo_load",

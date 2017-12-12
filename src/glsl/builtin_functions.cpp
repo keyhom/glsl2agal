@@ -3255,17 +3255,18 @@ builtin_builder::_dot(const glsl_type *type)
 ir_function_signature *
 builtin_builder::_cross(const glsl_type *type)
 {
-   ir_variable *a = in_var(type, "a");
-   ir_variable *b = in_var(type, "b");
-   MAKE_SIG(type, always_available, 2, a, b);
+   //ir_variable *a = in_var(type, "a");
+   //ir_variable *b = in_var(type, "b");
+   //MAKE_SIG(type, always_available, 2, a, b);
 
-   int yzx = MAKE_SWIZZLE4(SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X, 0);
-   int zxy = MAKE_SWIZZLE4(SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y, 0);
+   //int yzx = MAKE_SWIZZLE4(SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X, 0);
+   //int zxy = MAKE_SWIZZLE4(SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y, 0);
 
-   body.emit(ret(sub(mul(swizzle(a, yzx, 3), swizzle(b, zxy, 3)),
-                     mul(swizzle(a, zxy, 3), swizzle(b, yzx, 3)))));
+   //body.emit(ret(sub(mul(swizzle(a, yzx, 3), swizzle(b, zxy, 3)),
+   //                  mul(swizzle(a, zxy, 3), swizzle(b, yzx, 3)))));
 
-   return sig;
+   //return sig;
+    return binop(ir_binop_cross, always_available, glsl_type::vec3_type, type, type);
 }
 
 ir_function_signature *

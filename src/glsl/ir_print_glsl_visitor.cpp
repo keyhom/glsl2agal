@@ -691,6 +691,7 @@ static const char *const operator_glsl_strs[] = {
 	"min",
 	"max",
 	"pow",
+    "cross",
 	"packHalf2x16_split_TODO",
 	"bfm_TODO",
 	"uboloadTODO",
@@ -724,7 +725,7 @@ static bool is_binop_func_like(ir_expression_operation op, const glsl_type* type
 	if (op == ir_binop_equal || 
 		op == ir_binop_nequal ||
 		op == ir_binop_mod ||
-		(op >= ir_binop_dot && op <= ir_binop_pow))
+		(op >= ir_binop_dot && op <= ir_binop_cross))
 		return true;
 	if (type->is_vector() && (op >= ir_binop_less && op <= ir_binop_nequal))
 	{

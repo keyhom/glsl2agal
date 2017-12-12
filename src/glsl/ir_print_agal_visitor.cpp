@@ -352,6 +352,7 @@ static const char *const operator_glsl_strs[] = {
     "min",
     "max",
     "pow",
+    "cross",
     "vectorTODO",
 };
 
@@ -668,6 +669,7 @@ void ir_print_agal_visitor::visit(ir_assignment *ir)
             case ir_binop_max: ralloc_asprintf_append(&buffer, "max "); isBinOp = true; break;
             case ir_binop_min: ralloc_asprintf_append(&buffer, "min "); isBinOp = true; break;
             case ir_binop_pow: ralloc_asprintf_append(&buffer, "pow "); isBinOp = true; break;
+            case ir_binop_cross: ralloc_asprintf_append(&buffer, "crs "); isBinOp = true; break;
             case ir_binop_dot:
                 ec1 = countElements(op1);
                 ec2 = countElements(op2);
