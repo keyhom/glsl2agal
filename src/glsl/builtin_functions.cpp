@@ -136,6 +136,13 @@ v140(const _mesa_glsl_parse_state *state)
 }
 
 static bool
+agal(const _mesa_glsl_parse_state *state)
+{
+    // TODO: detect as AGAL return true, false otherwise.
+    return true;
+}
+
+static bool
 texture_rectangle(const _mesa_glsl_parse_state *state)
 {
    return state->ARB_texture_rectangle_enable;
@@ -568,6 +575,9 @@ private:
    BA2(max)
    BA2(clamp)
    B2(mix_lrp)
+   ir_function_signature *_mix_flat(builtin_available_predicate avail,
+                                   const glsl_type *val_type,
+                                   const glsl_type *blend_type);
    ir_function_signature *_mix_sel(builtin_available_predicate avail,
                                    const glsl_type *val_type,
                                    const glsl_type *blend_type);
@@ -1004,6 +1014,15 @@ builtin_builder::create_builtins()
                 _mix_lrp(glsl_type::vec2_type,  glsl_type::vec2_type),
                 _mix_lrp(glsl_type::vec3_type,  glsl_type::vec3_type),
                 _mix_lrp(glsl_type::vec4_type,  glsl_type::vec4_type),
+
+                _mix_flat(agal, glsl_type::float_type, glsl_type::float_type),
+                _mix_flat(agal, glsl_type::vec2_type, glsl_type::float_type),
+                _mix_flat(agal, glsl_type::vec3_type, glsl_type::float_type),
+                _mix_flat(agal, glsl_type::vec4_type, glsl_type::float_type),
+
+                _mix_flat(agal, glsl_type::vec2_type, glsl_type::vec2_type),
+                _mix_flat(agal, glsl_type::vec3_type, glsl_type::vec3_type),
+                _mix_flat(agal, glsl_type::vec4_type, glsl_type::vec4_type),
 
                 _mix_sel(v130, glsl_type::float_type, glsl_type::bool_type),
                 _mix_sel(v130, glsl_type::vec2_type,  glsl_type::bvec2_type),
@@ -2975,12 +2994,37 @@ builtin_builder::_clamp(builtin_available_predicate avail,
 ir_function_signature *
 builtin_builder::_mix_lrp(const glsl_type *val_type, const glsl_type *blend_type)
 {
+    // FIXME: Makes _mix_flat instead of _mix_lrp, remove it when agal detection finished.
+   return _mix_flat(always_available, val_type, blend_type);
+
    ir_variable *x = in_var(val_type, "x");
    ir_variable *y = in_var(val_type, "y");
    ir_variable *a = in_var(blend_type, "a");
    MAKE_SIG(val_type, always_available, 3, x, y, a);
 
    body.emit(ret(lrp(x, y, a)));
+
+   return sig;
+}
+
+ir_function_signature *
+builtin_builder::_mix_flat(builtin_available_predicate avail,
+                           const glsl_type *val_type,
+                           const glsl_type *blend_type)
+{
+   ir_variable *x = in_var(val_type, "x");
+   ir_variable *y = in_var(val_type, "y");
+   ir_variable *a = in_var(blend_type, "a");
+   MAKE_SIG(val_type, avail, 3, x, y, a);
+
+   /* From the GLSL 1.10 specification:
+    *
+    *    genType t;
+    *    t = x * (1 - a) + y * a;
+    *    return t;
+    */
+
+   body.emit(ret(add(mul(x, sub(imm(1.0f), a)), mul(y, a))));
 
    return sig;
 }
