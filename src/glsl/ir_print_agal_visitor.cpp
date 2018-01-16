@@ -700,6 +700,8 @@ void ir_print_agal_visitor::visit(ir_assignment *ir)
             case ir_unop_sqrt: ralloc_asprintf_append(&buffer, "sqt "); isBinOp = false; break;
             case ir_unop_normalize: ralloc_asprintf_append(&buffer, "nrm "); isBinOp = false; break;
             case ir_unop_saturate: ralloc_asprintf_append(&buffer, "sat "); isBinOp = false; break;
+            case ir_unop_dFdx: ralloc_asprintf_append(&buffer, "ddx "); isBinOp = false; break;
+            case ir_unop_dFdy: ralloc_asprintf_append(&buffer, "ddy "); isBinOp = false; break;
                 //case ir_unop_logic_not: ralloc_asprintf_append (&buffer, ""); isBinOp=false; break;
             default:
                 fprintf(stderr, "// default op %s\n", expr->operator_string());
