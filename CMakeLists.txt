@@ -22,11 +22,15 @@ if(AVM2PlusCC OR FLASCC)
 endif()
 
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type to Configuration types build." FORCE)
+    if(AVM2PlusCC OR FLASCC)
+        set(CMAKE_BUILD_TYPE "MinSizeRel" CACHE STRING "Choose the type to Configuration types build." FORCE)
+    else()
+        set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type to Configuration types build." FORCE)
+    endif()
 endif()
 
 if(FLASCC)
-    add_definitions(-emit-llvm -Os)
+    add_definitions(-emit-llvm)
 endif()
 
 if(USE_BUILTIN_FEATURES)
